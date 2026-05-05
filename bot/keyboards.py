@@ -19,6 +19,13 @@ ADMIN_EDIT_TEACHER = "Teacher ma'lumotini sozlash"
 ADMIN_SEND_COURSE_MESSAGE = "Kursga xabar yuborish"
 
 
+def shorten_button_text(value: str, limit: int = 40) -> str:
+    text = value.strip()
+    if len(text) <= limit:
+        return text
+    return f"{text[: limit - 3].rstrip()}..."
+
+
 def main_menu(is_admin: bool) -> ReplyKeyboardMarkup:
     keyboard = [[
         KeyboardButton(text=MENU_COURSES),
@@ -68,7 +75,7 @@ def courses_inline_keyboard(
     builder = InlineKeyboardBuilder()
     for course in courses:
         builder.button(
-            text=str(course["name"]),
+            text=shorten_button_text(str(course["name"])),
             callback_data=f"{prefix}:{int(course['id'])}",
         )
     builder.adjust(1)

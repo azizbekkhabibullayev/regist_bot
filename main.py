@@ -74,6 +74,18 @@ def split_text(text: str, limit: int = 3500) -> list[str]:
     current_length = 0
 
     for line in text.splitlines():
+        if len(line) > limit:
+            if chunk:
+                parts.append("\n".join(chunk))
+                chunk = []
+                current_length = 0
+
+            start_index = 0
+            while start_index < len(line):
+                parts.append(line[start_index : start_index + limit])
+                start_index += limit
+            continue
+
         next_length = current_length + len(line) + 1
         if chunk and next_length > limit:
             parts.append("\n".join(chunk))
@@ -101,11 +113,12 @@ def format_courses_for_user(
     numbered: bool = False,
     html_safe: bool = False,
     include_descriptions: bool = True,
+    name_limit: int = 70,
     description_limit: int = 90,
 ) -> str:
     lines: list[str] = []
     for index, course in enumerate(courses, start=1):
-        name = str(course["name"])
+        name = shorten_text(str(course["name"]), name_limit)
         description = str(course["description"]).strip() if course["description"] else ""
         if description:
             description = shorten_text(description, description_limit)
@@ -193,6 +206,7 @@ def build_start_text(courses: list[Any], is_admin: bool) -> str:
                 numbered=True,
                 html_safe=True,
                 include_descriptions=False,
+                name_limit=60,
             )
         )
         lines.extend(
@@ -286,6 +300,7 @@ async def send_courses_catalog(message: Message, intro_text: str | None = None) 
                 courses,
                 numbered=True,
                 include_descriptions=False,
+                name_limit=60,
             ),
         ]
     )
@@ -525,6 +540,9 @@ async def add_course_name_handler(message: Message, state: FSMContext) -> None:
     if not message.text or len(message.text.strip()) < 3:
         await message.answer("Kurs nomini kamida 3 ta belgida kiriting.")
         return
+    if len(message.text.strip()) > 120:
+        await message.answer("Kurs nomini 120 ta belgidan qisqaroq kiriting.")
+        return
 
     await state.update_data(name=message.text.strip())
     await state.set_state(AddCourseState.description)
@@ -538,6 +556,9 @@ async def add_course_name_handler(message: Message, state: FSMContext) -> None:
 async def add_course_description_handler(message: Message, state: FSMContext) -> None:
     if not message.text:
         await message.answer("Tavsif kiriting yoki `-` yuboring.")
+        return
+    if message.text.strip() != "-" and len(message.text.strip()) > 600:
+        await message.answer("Tavsifni 600 ta belgidan qisqaroq kiriting.")
         return
 
     data = await state.get_data()
