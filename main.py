@@ -39,6 +39,7 @@ from bot.states import AddCourseState, CourseBroadcastState, RegistrationState, 
 settings = Settings.from_env()
 database = Database(settings.database_path)
 router = Router()
+TELEGRAM_TEXT_LIMIT = 3500
 
 
 def is_admin_user(user_id: int | None) -> bool:
@@ -87,23 +88,34 @@ def split_text(text: str, limit: int = 3500) -> list[str]:
     return parts
 
 
+def shorten_text(value: str, limit: int = 90) -> str:
+    text = value.strip()
+    if len(text) <= limit:
+        return text
+    return f"{text[: limit - 3].rstrip()}..."
+
+
 def format_courses_for_user(
     courses: list[Any],
     *,
     numbered: bool = False,
     html_safe: bool = False,
+    include_descriptions: bool = True,
+    description_limit: int = 90,
 ) -> str:
     lines: list[str] = []
     for index, course in enumerate(courses, start=1):
         name = str(course["name"])
         description = str(course["description"]).strip() if course["description"] else ""
+        if description:
+            description = shorten_text(description, description_limit)
         if html_safe:
             name = escape(name)
             description = escape(description)
 
         prefix = f"{index}." if numbered else "-"
         line = f"{prefix} {name}"
-        if description:
+        if include_descriptions and description:
             line = f"{line}: {description}"
         lines.append(line)
     return "\n".join(lines)
@@ -175,7 +187,14 @@ def build_start_text(courses: list[Any], is_admin: bool) -> str:
 
     if courses:
         lines.append("<b>Hozir mavjud kurslar:</b>")
-        lines.append(format_courses_for_user(courses, numbered=True, html_safe=True))
+        lines.append(
+            format_courses_for_user(
+                courses,
+                numbered=True,
+                html_safe=True,
+                include_descriptions=False,
+            )
+        )
         lines.extend(
             [
                 "",
@@ -259,13 +278,23 @@ async def send_courses_catalog(message: Message, intro_text: str | None = None) 
         await message.answer("Hozircha kurslar qo'shilmagan.")
         return
 
-    text_lines = [
+    text = "\n".join(
+        [
         intro_text or "Quyidagi kurslardan birini tanlang:",
         "",
-        format_courses_for_user(courses, numbered=True),
-    ]
+            format_courses_for_user(
+                courses,
+                numbered=True,
+                include_descriptions=False,
+            ),
+        ]
+    )
+
+    chunks = split_text(text, limit=TELEGRAM_TEXT_LIMIT)
+    for chunk in chunks[:-1]:
+        await message.answer(chunk)
     await message.answer(
-        "\n".join(text_lines),
+        chunks[-1],
         reply_markup=courses_inline_keyboard(courses, "course"),
     )
 
@@ -275,11 +304,13 @@ async def start_handler(message: Message, state: FSMContext) -> None:
     await state.clear()
     is_admin = is_admin_user(message.from_user.id if message.from_user else None)
     courses = database.list_courses()
-    await message.answer(
-        build_start_text(courses, is_admin),
-        reply_markup=main_menu(is_admin),
-        parse_mode=ParseMode.HTML,
-    )
+    start_chunks = split_text(build_start_text(courses, is_admin), limit=TELEGRAM_TEXT_LIMIT)
+    for index, chunk in enumerate(start_chunks):
+        await message.answer(
+            chunk,
+            reply_markup=main_menu(is_admin) if index == 0 else None,
+            parse_mode=ParseMode.HTML,
+        )
     if courses:
         await message.answer(
             "Ro'yxatdan o'tish uchun pastdagi kurslardan birini tanlang:",
