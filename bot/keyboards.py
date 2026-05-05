@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, KeyboardButton, ReplyKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
@@ -71,12 +71,47 @@ def contact_keyboard() -> ReplyKeyboardMarkup:
 def courses_inline_keyboard(
     courses: Sequence[Mapping[str, object]],
     prefix: str,
+    *,
+    page: int = 0,
+    per_page: int = 8,
 ):
     builder = InlineKeyboardBuilder()
-    for course in courses:
+
+    total_courses = len(courses)
+    start_index = page * per_page
+    end_index = start_index + per_page
+    page_courses = courses[start_index:end_index]
+
+    for course in page_courses:
         builder.button(
             text=shorten_button_text(str(course["name"])),
             callback_data=f"{prefix}:{int(course['id'])}",
         )
+
     builder.adjust(1)
+
+    total_pages = max(1, (total_courses + per_page - 1) // per_page)
+    if total_pages > 1:
+        navigation_row: list[InlineKeyboardButton] = []
+        if page > 0:
+            navigation_row.append(
+                InlineKeyboardButton(
+                    text="◀️ Oldingi",
+                    callback_data=f"page:{prefix}:{page - 1}",
+                )
+            )
+        navigation_row.append(
+            InlineKeyboardButton(
+                text=f"{page + 1}/{total_pages}",
+                callback_data="noop",
+            )
+        )
+        if page < total_pages - 1:
+            navigation_row.append(
+                InlineKeyboardButton(
+                    text="Keyingi ▶️",
+                    callback_data=f"page:{prefix}:{page + 1}",
+                )
+            )
+        builder.row(*navigation_row)
     return builder.as_markup()

@@ -40,6 +40,7 @@ settings = Settings.from_env()
 database = Database(settings.database_path)
 router = Router()
 TELEGRAM_TEXT_LIMIT = 3500
+COURSES_PER_PAGE = 8
 
 
 def is_admin_user(user_id: int | None) -> bool:
@@ -292,25 +293,16 @@ async def send_courses_catalog(message: Message, intro_text: str | None = None) 
         await message.answer("Hozircha kurslar qo'shilmagan.")
         return
 
-    text = "\n".join(
-        [
-        intro_text or "Quyidagi kurslardan birini tanlang:",
-        "",
-            format_courses_for_user(
-                courses,
-                numbered=True,
-                include_descriptions=False,
-                name_limit=60,
-            ),
-        ]
-    )
-
-    chunks = split_text(text, limit=TELEGRAM_TEXT_LIMIT)
-    for chunk in chunks[:-1]:
-        await message.answer(chunk)
+    total_pages = max(1, (len(courses) + COURSES_PER_PAGE - 1) // COURSES_PER_PAGE)
+    text = f"{intro_text or 'Quyidagi kurslardan birini tanlang:'}\n\nSahifa: 1/{total_pages}"
     await message.answer(
-        chunks[-1],
-        reply_markup=courses_inline_keyboard(courses, "course"),
+        text,
+        reply_markup=courses_inline_keyboard(
+            courses,
+            "course",
+            page=0,
+            per_page=COURSES_PER_PAGE,
+        ),
     )
 
 
@@ -329,7 +321,12 @@ async def start_handler(message: Message, state: FSMContext) -> None:
     if courses:
         await message.answer(
             "Ro'yxatdan o'tish uchun pastdagi kurslardan birini tanlang:",
-            reply_markup=courses_inline_keyboard(courses, "course"),
+            reply_markup=courses_inline_keyboard(
+                courses,
+                "course",
+                page=0,
+                per_page=COURSES_PER_PAGE,
+            ),
         )
 
 
@@ -394,12 +391,71 @@ async def send_course_message_menu_handler(message: Message, state: FSMContext) 
 
     await message.answer(
         "Qaysi kursga xabar yubormoqchisiz?",
-        reply_markup=courses_inline_keyboard(courses, "broadcast_course"),
+        reply_markup=courses_inline_keyboard(
+            courses,
+            "broadcast_course",
+            page=0,
+            per_page=COURSES_PER_PAGE,
+        ),
     )
 
 
 @router.callback_query(F.data == "noop")
 async def noop_handler(callback: CallbackQuery) -> None:
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("page:"))
+async def course_pagination_handler(callback: CallbackQuery) -> None:
+    if callback.message is None or callback.from_user is None:
+        await callback.answer()
+        return
+
+    parts = callback.data.split(":")
+    if len(parts) != 3:
+        await callback.answer()
+        return
+
+    prefix = parts[1]
+    page = int(parts[2])
+    courses = database.list_courses()
+    if not courses:
+        await callback.answer("Hozircha kurslar yo'q.", show_alert=True)
+        return
+
+    total_pages = max(1, (len(courses) + COURSES_PER_PAGE - 1) // COURSES_PER_PAGE)
+    page = max(0, min(page, total_pages - 1))
+
+    if prefix == "course":
+        text = f"Ro'yxatdan o'tmoqchi bo'lgan kursingizni tanlang:\n\nSahifa: {page + 1}/{total_pages}"
+    elif prefix == "delete_course":
+        if not is_admin_user(callback.from_user.id):
+            await callback.answer("Sizda bu amal uchun huquq yo'q.", show_alert=True)
+            return
+        text = f"O'chiriladigan kursni tanlang:\n\nSahifa: {page + 1}/{total_pages}"
+    elif prefix == "course_apps":
+        if not is_admin_user(callback.from_user.id):
+            await callback.answer("Sizda bu amal uchun huquq yo'q.", show_alert=True)
+            return
+        text = f"Qaysi kurs arizalarini ko'rmoqchisiz?\n\nSahifa: {page + 1}/{total_pages}"
+    elif prefix == "broadcast_course":
+        if not is_admin_user(callback.from_user.id):
+            await callback.answer("Sizda bu amal uchun huquq yo'q.", show_alert=True)
+            return
+        text = f"Qaysi kursga xabar yubormoqchisiz?\n\nSahifa: {page + 1}/{total_pages}"
+    else:
+        await callback.answer()
+        return
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=courses_inline_keyboard(
+            courses,
+            prefix,
+            page=page,
+            per_page=COURSES_PER_PAGE,
+        ),
+    )
     await callback.answer()
 
 
@@ -771,7 +827,12 @@ async def delete_course_menu_handler(message: Message) -> None:
 
     await message.answer(
         "O'chiriladigan kursni tanlang:",
-        reply_markup=courses_inline_keyboard(courses, "delete_course"),
+        reply_markup=courses_inline_keyboard(
+            courses,
+            "delete_course",
+            page=0,
+            per_page=COURSES_PER_PAGE,
+        ),
     )
 
 
@@ -813,7 +874,12 @@ async def applications_menu_handler(message: Message) -> None:
 
     await message.answer(
         "Qaysi kurs arizalarini ko'rmoqchisiz?",
-        reply_markup=courses_inline_keyboard(courses, "course_apps"),
+        reply_markup=courses_inline_keyboard(
+            courses,
+            "course_apps",
+            page=0,
+            per_page=COURSES_PER_PAGE,
+        ),
     )
 
 
