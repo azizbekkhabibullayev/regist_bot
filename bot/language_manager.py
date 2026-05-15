@@ -16,7 +16,7 @@ class LanguageManager:
     
     def __init__(self, database: Database):
         self.database = database
-        self.db_path = database.db_path
+        self.db_path = database.path
     
     def get_user_language(self, user_id: int) -> str:
         """Get the language preference for a user. Defaults to 'uz' if not set."""
