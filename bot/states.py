@@ -22,3 +22,7 @@ class TeacherProfileState(StatesGroup):
 
 class CourseBroadcastState(StatesGroup):
     message = State()
+
+
+class LanguageState(StatesGroup):
+    choosing_language = State()

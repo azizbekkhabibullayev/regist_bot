@@ -55,6 +55,12 @@ class Database:
                     bio TEXT NOT NULL DEFAULT '',
                     updated_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS language_preferences (
+                    user_id INTEGER PRIMARY KEY,
+                    language TEXT DEFAULT 'uz' CHECK(language IN ('ru', 'en', 'uz')),
+                    updated_at TEXT NOT NULL
+                );
                 """
             )
             connection.execute(

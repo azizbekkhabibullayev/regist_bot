@@ -6,19 +6,6 @@ from aiogram.types import InlineKeyboardButton, KeyboardButton, ReplyKeyboardMar
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
-MENU_COURSES = "Kurslar"
-MENU_TEACHER = "Teacher haqida"
-MENU_ADMIN = "Admin panel"
-MENU_BACK = "Bosh menyu"
-MENU_CANCEL = "Bekor qilish"
-
-ADMIN_ADD_COURSE = "Kurs qo'shish"
-ADMIN_DELETE_COURSE = "Kursni o'chirish"
-ADMIN_VIEW_APPLICATIONS = "Arizalarni ko'rish"
-ADMIN_EDIT_TEACHER = "Teacher ma'lumotini sozlash"
-ADMIN_SEND_COURSE_MESSAGE = "Kursga xabar yuborish"
-
-
 def shorten_button_text(value: str, limit: int = 40) -> str:
     text = value.strip()
     if len(text) <= limit:
@@ -26,42 +13,63 @@ def shorten_button_text(value: str, limit: int = 40) -> str:
     return f"{text[: limit - 3].rstrip()}..."
 
 
-def main_menu(is_admin: bool) -> ReplyKeyboardMarkup:
+def main_menu(is_admin: bool, lang: str = "uz") -> ReplyKeyboardMarkup:
+    from bot.language_manager import LanguageManager
+    strings = LanguageManager.STRINGS.get(lang, LanguageManager.STRINGS["uz"])
+    
     keyboard = [[
-        KeyboardButton(text=MENU_COURSES),
-        KeyboardButton(text=MENU_TEACHER),
+        KeyboardButton(text=strings["menu_courses"]),
+        KeyboardButton(text=strings["menu_teacher"]),
     ]]
+    keyboard.append([KeyboardButton(text=strings["menu_lang"])])
     if is_admin:
-        keyboard.append([KeyboardButton(text=MENU_ADMIN)])
+        # Admin paneli odatda bir xil tilda qolgani ma'qul, lekin uni ham o'zgartirsa bo'ladi
+        keyboard.append([KeyboardButton(text=strings["menu_admin"])])
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
 
-def admin_menu() -> ReplyKeyboardMarkup:
+def admin_menu(lang: str = "uz") -> ReplyKeyboardMarkup:
+    from bot.language_manager import LanguageManager
+    s = LanguageManager.STRINGS.get(lang, LanguageManager.STRINGS["uz"])
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=ADMIN_ADD_COURSE)],
-            [KeyboardButton(text=ADMIN_DELETE_COURSE)],
-            [KeyboardButton(text=ADMIN_VIEW_APPLICATIONS)],
-            [KeyboardButton(text=ADMIN_SEND_COURSE_MESSAGE)],
-            [KeyboardButton(text=ADMIN_EDIT_TEACHER)],
-            [KeyboardButton(text=MENU_BACK)],
+            [KeyboardButton(text=s["admin_menu_add"]), KeyboardButton(text=s["admin_menu_del"])],
+            [KeyboardButton(text=s["admin_menu_apps"]), KeyboardButton(text=s["admin_menu_send"])],
+            [KeyboardButton(text=s["admin_menu_teacher"])],
+            [KeyboardButton(text=s["menu_back"])],
         ],
         resize_keyboard=True,
     )
 
 
-def cancel_keyboard() -> ReplyKeyboardMarkup:
+def cancel_keyboard(lang: str = "uz") -> ReplyKeyboardMarkup:
+    from bot.language_manager import LanguageManager
+    s = LanguageManager.STRINGS.get(lang, LanguageManager.STRINGS["uz"])
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text=MENU_CANCEL)]],
+        keyboard=[[KeyboardButton(text=s["menu_cancel"])]],
         resize_keyboard=True,
     )
 
 
-def contact_keyboard() -> ReplyKeyboardMarkup:
+def language_keyboard(lang: str = "uz") -> ReplyKeyboardMarkup:
+    from bot.language_manager import LanguageManager
+    s = LanguageManager.STRINGS.get(lang, LanguageManager.STRINGS["uz"])
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="Telefon raqamni yuborish", request_contact=True)],
-            [KeyboardButton(text=MENU_CANCEL)],
+            [KeyboardButton(text="O'zbekcha 🇺🇿"), KeyboardButton(text="Русский 🇷🇺")],
+            [KeyboardButton(text="English 🇺🇸"), KeyboardButton(text=s["menu_cancel"])],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def contact_keyboard(lang: str = "uz") -> ReplyKeyboardMarkup:
+    from bot.language_manager import LanguageManager
+    s = LanguageManager.STRINGS.get(lang, LanguageManager.STRINGS["uz"])
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=s["send_phone_btn"], request_contact=True)],
+            [KeyboardButton(text=s["menu_cancel"])],
         ],
         resize_keyboard=True,
         one_time_keyboard=True,
@@ -74,7 +82,10 @@ def courses_inline_keyboard(
     *,
     page: int = 0,
     per_page: int = 8,
+    lang: str = "uz"
 ):
+    from bot.language_manager import LanguageManager
+    s = LanguageManager.STRINGS.get(lang, LanguageManager.STRINGS["uz"])
     builder = InlineKeyboardBuilder()
 
     total_courses = len(courses)
@@ -96,7 +107,7 @@ def courses_inline_keyboard(
         if page > 0:
             navigation_row.append(
                 InlineKeyboardButton(
-                    text="◀️ Oldingi",
+                    text=s["prev_btn"],
                     callback_data=f"page:{prefix}:{page - 1}",
                 )
             )
@@ -109,7 +120,7 @@ def courses_inline_keyboard(
         if page < total_pages - 1:
             navigation_row.append(
                 InlineKeyboardButton(
-                    text="Keyingi ▶️",
+                    text=s["next_btn"],
                     callback_data=f"page:{prefix}:{page + 1}",
                 )
             )

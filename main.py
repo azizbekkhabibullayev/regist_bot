@@ -16,28 +16,21 @@ from aiogram.types import CallbackQuery, Message
 
 from bot.config import Settings
 from bot.database import Database
+from bot.language_manager import LanguageManager, LANGUAGE_CODES
 from bot.keyboards import (
-    ADMIN_ADD_COURSE,
-    ADMIN_DELETE_COURSE,
-    ADMIN_EDIT_TEACHER,
-    ADMIN_SEND_COURSE_MESSAGE,
-    ADMIN_VIEW_APPLICATIONS,
-    MENU_ADMIN,
-    MENU_BACK,
-    MENU_CANCEL,
-    MENU_COURSES,
-    MENU_TEACHER,
     admin_menu,
     cancel_keyboard,
     contact_keyboard,
     courses_inline_keyboard,
+    language_keyboard,
     main_menu,
 )
-from bot.states import AddCourseState, CourseBroadcastState, RegistrationState, TeacherProfileState
+from bot.states import AddCourseState, CourseBroadcastState, RegistrationState, TeacherProfileState, LanguageState
 
 
 settings = Settings.from_env()
 database = Database(settings.database_path)
+lang_manager = LanguageManager(database)
 router = Router()
 TELEGRAM_TEXT_LIMIT = 3500
 COURSES_PER_PAGE = 8
@@ -135,11 +128,11 @@ def format_courses_for_user(
     return "\n".join(lines)
 
 
-def format_registrations(course_name: str, registrations: list[Any]) -> str:
+def format_registrations(course_name: str, registrations: list[Any], lang: str) -> str:
     if not registrations:
-        return f"{course_name} kursi uchun hali arizalar yo'q."
+        return lang_manager.get_text_by_lang(lang, "admin_apps_empty", course=course_name)
 
-    lines = [f"{course_name} kursi bo'yicha arizalar:", ""]
+    lines = [lang_manager.get_text_by_lang(lang, "admin_apps_title", course=course_name), ""]
     for index, registration in enumerate(registrations, start=1):
         telegram_name = (
             f"@{registration['username']}"
@@ -149,8 +142,8 @@ def format_registrations(course_name: str, registrations: list[Any]) -> str:
         lines.extend(
             [
                 f"{index}. {registration['first_name']} {registration['last_name']}",
-                f"Telefon: {registration['phone']}",
-                f"Manzil: {registration['address']}",
+                f"{lang_manager.get_text_by_lang(lang, 'field_phone')} {registration['phone']}",
+                f"{lang_manager.get_text_by_lang(lang, 'enter_address')} {registration['address']}",
                 f"Telegram: {telegram_name}",
                 f"Sana: {registration['created_at']}",
                 "",
@@ -159,31 +152,28 @@ def format_registrations(course_name: str, registrations: list[Any]) -> str:
     return "\n".join(lines).strip()
 
 
-def format_teacher_profile(profile: Any) -> str:
+def format_teacher_profile(profile: Any, lang: str) -> str:
     full_name = str(profile["full_name"]).strip()
     phone = str(profile["phone"]).strip()
     social_links = str(profile["social_links"]).strip()
     bio = str(profile["bio"]).strip()
 
     if not any([full_name, phone, social_links, bio]):
-        return (
-            "<b>Teacher haqida</b>\n\n"
-            "Hozircha ustoz haqida ma'lumot kiritilmagan."
-        )
+        return lang_manager.get_text_by_lang(lang, "teacher_not_set")
 
-    lines = ["<b>Teacher haqida</b>", ""]
+    lines = [lang_manager.get_text_by_lang(lang, "teacher_profile_title"), ""]
     if full_name:
-        lines.append(f"<b>Ism-familya:</b> {escape(full_name)}")
+        lines.append(f"{lang_manager.get_text_by_lang(lang, 'field_full_name')} {escape(full_name)}")
     if phone:
-        lines.append(f"<b>Telefon:</b> {escape(phone)}")
+        lines.append(f"{lang_manager.get_text_by_lang(lang, 'field_phone')} {escape(phone)}")
     if social_links:
-        lines.append("<b>Ijtimoiy tarmoqlar:</b>")
+        lines.append(lang_manager.get_text_by_lang(lang, "field_social"))
         for link in social_links.splitlines():
             clean_link = link.strip()
             if clean_link:
                 lines.append(f"- {escape(clean_link)}")
     if bio:
-        lines.extend(["", "<b>Qisqacha ma'lumot:</b>"])
+        lines.extend(["", lang_manager.get_text_by_lang(lang, "field_bio")])
         for line in bio.splitlines():
             clean_line = line.strip()
             if clean_line:
@@ -191,16 +181,11 @@ def format_teacher_profile(profile: Any) -> str:
     return "\n".join(lines)
 
 
-def build_start_text(courses: list[Any], is_admin: bool) -> str:
-    lines = [
-        "<b>Assalomu alaykum!</b>",
-        "Kasb o'rganishni bugundan boshlang.",
-        "Quyidagi kurslardan birini tanlang va bir necha daqiqada ro'yxatdan o'ting.",
-        "",
-    ]
+def build_start_text(courses: list[Any], is_admin: bool, lang: str) -> str:
+    lines = [lang_manager.get_text_by_lang(lang, "welcome"), ""]
 
     if courses:
-        lines.append("<b>Hozir mavjud kurslar:</b>")
+        lines.append(lang_manager.get_text_by_lang(lang, "start_available"))
         lines.append(
             format_courses_for_user(
                 courses,
@@ -210,24 +195,13 @@ def build_start_text(courses: list[Any], is_admin: bool) -> str:
                 name_limit=60,
             )
         )
-        lines.extend(
-            [
-                "",
-                "Mos kursni tanlab, ariza qoldiring. Siz bilan tez orada bog'laniladi.",
-            ]
-        )
     else:
-        lines.extend(
-            [
-                "Hozircha kurslar ro'yxati shakllantirilmoqda.",
-                "Yaqinda yangi kurslar qo'shiladi.",
-            ]
-        )
+        lines.append(lang_manager.get_text_by_lang(lang, "start_empty"))
 
     lines.append("")
-    lines.append("Ustoz haqida bilish uchun <b>Teacher haqida</b> tugmasini bosing.")
+    lines.append(lang_manager.get_text_by_lang(lang, "start_teacher"))
     if is_admin:
-        lines.append("Siz admin sifatida kurslar va teacher ma'lumotlarini ham boshqarishingiz mumkin.")
+        lines.append(lang_manager.get_text_by_lang(lang, "start_admin"))
     return "\n".join(lines)
 
 
@@ -242,17 +216,17 @@ async def send_admin_notifications(
 
     username = registration_data.get("username")
     telegram_name = f"@{username}" if username else f"ID: {registration_data['user_id']}"
-    text = (
-        "Yangi ariza keldi.\n\n"
-        f"Kurs: {course_name}\n"
-        f"Ism: {registration_data['first_name']}\n"
-        f"Familya: {registration_data['last_name']}\n"
-        f"Telefon: {registration_data['phone']}\n"
-        f"Manzil: {registration_data['address']}\n"
-        f"Telegram: {telegram_name}"
-    )
-
     for admin_id in settings.admin_ids:
+        admin_lang = lang_manager.get_user_language(admin_id)
+        text = lang_manager.get_text_by_lang(
+            admin_lang, "admin_new_reg_notif",
+            course=course_name,
+            first=registration_data['first_name'],
+            last=registration_data['last_name'],
+            phone=registration_data['phone'],
+            addr=registration_data['address'],
+            tg=telegram_name
+        )
         try:
             await bot.send_message(admin_id, text)
         except (TelegramForbiddenError, TelegramBadRequest):
@@ -281,20 +255,53 @@ async def send_course_broadcast(
 
 
 async def show_main_menu(message: Message) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
+    is_admin = is_admin_user(message.from_user.id if message.from_user else None)
     await message.answer(
-        "Kerakli bo'limni tanlang: kurslar yoki teacher haqida ma'lumot ochishingiz mumkin.",
-        reply_markup=main_menu(is_admin_user(message.from_user.id if message.from_user else None)),
+        lang_manager.get_text_by_lang(user_lang, "welcome"),
+        reply_markup=main_menu(is_admin, lang=user_lang),
+        parse_mode=ParseMode.HTML
     )
 
 
+@router.message(F.text.in_(lang_manager.get_all_translations("menu_lang")))
+async def change_language_handler(message: Message, state: FSMContext) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
+    await state.set_state(LanguageState.choosing_language)
+    await message.answer(
+        lang_manager.get_text_by_lang(user_lang, "choose_lang"),
+        reply_markup=language_keyboard(user_lang),
+    )
+
+
+@router.message(LanguageState.choosing_language)
+async def process_language_choice(message: Message, state: FSMContext) -> None:
+    code = LANGUAGE_CODES.get(message.text or "")
+    if message.text in lang_manager.get_all_translations("menu_cancel"):
+        await state.clear()
+        await show_main_menu(message)
+        return
+
+    if not code:
+        await message.answer("Select language / Tilni tanlang / Выберите язык")
+        return
+
+    lang_manager.set_user_language(message.from_user.id, code)
+    await state.clear()
+    
+    success_text = lang_manager.get_text_by_lang(code, "lang_changed")
+    await message.answer(success_text, reply_markup=main_menu(is_admin_user(message.from_user.id), lang=code))
+
+
 async def send_courses_catalog(message: Message, intro_text: str | None = None) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     courses = database.list_courses()
     if not courses:
-        await message.answer("Hozircha kurslar qo'shilmagan.")
+        await message.answer(lang_manager.get_text_by_lang(user_lang, "no_courses"))
         return
 
     total_pages = max(1, (len(courses) + COURSES_PER_PAGE - 1) // COURSES_PER_PAGE)
-    text = f"{intro_text or 'Quyidagi kurslardan birini tanlang:'}\n\nSahifa: 1/{total_pages}"
+    text = f"{intro_text or lang_manager.get_text_by_lang(user_lang, 'select_course')}\n\nSahifa: 1/{total_pages}"
     await message.answer(
         text,
         reply_markup=courses_inline_keyboard(
@@ -302,6 +309,7 @@ async def send_courses_catalog(message: Message, intro_text: str | None = None) 
             "course",
             page=0,
             per_page=COURSES_PER_PAGE,
+            lang=user_lang
         ),
     )
 
@@ -309,93 +317,91 @@ async def send_courses_catalog(message: Message, intro_text: str | None = None) 
 @router.message(CommandStart())
 async def start_handler(message: Message, state: FSMContext) -> None:
     await state.clear()
+    user_id = message.from_user.id
+    user_lang = lang_manager.get_user_language(user_id)
     is_admin = is_admin_user(message.from_user.id if message.from_user else None)
     courses = database.list_courses()
-    start_chunks = split_text(build_start_text(courses, is_admin), limit=TELEGRAM_TEXT_LIMIT)
+    start_chunks = split_text(build_start_text(courses, is_admin, user_lang), limit=TELEGRAM_TEXT_LIMIT)
     for index, chunk in enumerate(start_chunks):
         await message.answer(
             chunk,
-            reply_markup=main_menu(is_admin) if index == 0 else None,
+            reply_markup=main_menu(is_admin, lang=user_lang) if index == 0 else None,
             parse_mode=ParseMode.HTML,
-        )
-    if courses:
-        await message.answer(
-            "Ro'yxatdan o'tish uchun pastdagi kurslardan birini tanlang:",
-            reply_markup=courses_inline_keyboard(
-                courses,
-                "course",
-                page=0,
-                per_page=COURSES_PER_PAGE,
-            ),
         )
 
 
 @router.message(Command("admin"))
-@router.message(F.text == MENU_ADMIN)
+@router.message(F.text.in_(lang_manager.get_all_translations("menu_admin")))
 async def admin_panel_handler(message: Message, state: FSMContext) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     if not is_admin_user(message.from_user.id if message.from_user else None):
-        await message.answer("Sizda admin panelga kirish huquqi yo'q.")
+        await message.answer(lang_manager.get_text_by_lang(user_lang, "admin_no_permission"))
         return
 
     await state.clear()
     await message.answer(
-        "Admin panelga xush kelibsiz. Bu yerda kurslar, arizalar va teacher ma'lumotlarini boshqarasiz.",
-        reply_markup=admin_menu(),
+        lang_manager.get_text_by_lang(user_lang, "admin_welcome"),
+        reply_markup=admin_menu(user_lang),
     )
 
 
-@router.message(F.text == MENU_BACK)
+@router.message(F.text.in_(lang_manager.get_all_translations("menu_back")))
 async def back_to_main_menu_handler(message: Message, state: FSMContext) -> None:
     await state.clear()
     await show_main_menu(message)
 
 
-@router.message(F.text == MENU_CANCEL)
+@router.message(F.text.in_(lang_manager.get_all_translations("menu_cancel")))
 async def cancel_handler(message: Message, state: FSMContext) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     await state.clear()
     await message.answer(
-        "Amal bekor qilindi.",
-        reply_markup=main_menu(is_admin_user(message.from_user.id if message.from_user else None)),
+        lang_manager.get_text_by_lang(user_lang, "action_cancelled"),
+        reply_markup=main_menu(is_admin_user(message.from_user.id), lang=user_lang),
     )
 
 
-@router.message(F.text == MENU_COURSES)
+@router.message(F.text.in_(lang_manager.get_all_translations("menu_courses")))
 async def courses_handler(message: Message) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     await send_courses_catalog(
         message,
-        intro_text="Ro'yxatdan o'tmoqchi bo'lgan kursingizni tanlang:",
+        intro_text=lang_manager.get_text_by_lang(user_lang, "select_course"),
     )
 
 
-@router.message(F.text == MENU_TEACHER)
+@router.message(F.text.in_(lang_manager.get_all_translations("menu_teacher")))
 async def teacher_info_handler(message: Message) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     profile = database.get_teacher_profile()
     await message.answer(
-        format_teacher_profile(profile),
+        format_teacher_profile(profile, user_lang),
         parse_mode=ParseMode.HTML,
-        reply_markup=main_menu(is_admin_user(message.from_user.id if message.from_user else None)),
+        reply_markup=main_menu(is_admin_user(message.from_user.id), lang=user_lang),
     )
 
 
-@router.message(F.text == ADMIN_SEND_COURSE_MESSAGE)
+@router.message(F.text.in_(lang_manager.get_all_translations("admin_menu_send")))
 async def send_course_message_menu_handler(message: Message, state: FSMContext) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     if not is_admin_user(message.from_user.id if message.from_user else None):
-        await message.answer("Sizda bu amal uchun huquq yo'q.")
+        await message.answer(lang_manager.get_text_by_lang(user_lang, "admin_no_permission"))
         return
 
     await state.clear()
     courses = database.list_courses()
     if not courses:
-        await message.answer("Hozircha kurslar mavjud emas.", reply_markup=admin_menu())
+        await message.answer(lang_manager.get_text_by_lang(user_lang, "admin_no_courses"), reply_markup=admin_menu(user_lang))
         return
 
     await message.answer(
-        "Qaysi kursga xabar yubormoqchisiz?",
+        lang_manager.get_text_by_lang(user_lang, "admin_broadcast_select"),
         reply_markup=courses_inline_keyboard(
             courses,
             "broadcast_course",
             page=0,
             per_page=COURSES_PER_PAGE,
+            lang=user_lang
         ),
     )
 
@@ -419,6 +425,7 @@ async def course_pagination_handler(callback: CallbackQuery) -> None:
     prefix = parts[1]
     page = int(parts[2])
     courses = database.list_courses()
+    user_lang = lang_manager.get_user_language(callback.from_user.id)
     if not courses:
         await callback.answer("Hozircha kurslar yo'q.", show_alert=True)
         return
@@ -427,22 +434,22 @@ async def course_pagination_handler(callback: CallbackQuery) -> None:
     page = max(0, min(page, total_pages - 1))
 
     if prefix == "course":
-        text = f"Ro'yxatdan o'tmoqchi bo'lgan kursingizni tanlang:\n\nSahifa: {page + 1}/{total_pages}"
+        text = f"{lang_manager.get_text_by_lang(user_lang, 'select_course')}\n\nSahifa: {page + 1}/{total_pages}"
     elif prefix == "delete_course":
         if not is_admin_user(callback.from_user.id):
-            await callback.answer("Sizda bu amal uchun huquq yo'q.", show_alert=True)
+            await callback.answer(lang_manager.get_text_by_lang(user_lang, "admin_no_permission"), show_alert=True)
             return
-        text = f"O'chiriladigan kursni tanlang:\n\nSahifa: {page + 1}/{total_pages}"
+        text = f"{lang_manager.get_text_by_lang(user_lang, 'admin_course_del_select')}\n\nSahifa: {page + 1}/{total_pages}"
     elif prefix == "course_apps":
         if not is_admin_user(callback.from_user.id):
-            await callback.answer("Sizda bu amal uchun huquq yo'q.", show_alert=True)
+            await callback.answer(lang_manager.get_text_by_lang(user_lang, "admin_no_permission"), show_alert=True)
             return
-        text = f"Qaysi kurs arizalarini ko'rmoqchisiz?\n\nSahifa: {page + 1}/{total_pages}"
+        text = f"{lang_manager.get_text_by_lang(user_lang, 'admin_apps_select')}\n\nSahifa: {page + 1}/{total_pages}"
     elif prefix == "broadcast_course":
         if not is_admin_user(callback.from_user.id):
-            await callback.answer("Sizda bu amal uchun huquq yo'q.", show_alert=True)
+            await callback.answer(lang_manager.get_text_by_lang(user_lang, "admin_no_permission"), show_alert=True)
             return
-        text = f"Qaysi kursga xabar yubormoqchisiz?\n\nSahifa: {page + 1}/{total_pages}"
+        text = f"{lang_manager.get_text_by_lang(user_lang, 'admin_broadcast_select')}\n\nSahifa: {page + 1}/{total_pages}"
     else:
         await callback.answer()
         return
@@ -454,6 +461,7 @@ async def course_pagination_handler(callback: CallbackQuery) -> None:
             prefix,
             page=page,
             per_page=COURSES_PER_PAGE,
+            lang=user_lang
         ),
     )
     await callback.answer()
@@ -465,15 +473,16 @@ async def choose_course_handler(callback: CallbackQuery, state: FSMContext) -> N
         await callback.answer()
         return
 
+    user_lang = lang_manager.get_user_language(callback.from_user.id)
     course_id = int(callback.data.split(":")[1])
     course = database.get_course(course_id)
     if course is None:
-        await callback.answer("Kurs topilmadi.", show_alert=True)
+        await callback.answer(lang_manager.get_text_by_lang(user_lang, "admin_course_not_found"), show_alert=True)
         return
 
     if database.user_has_registration(callback.from_user.id, course_id):
         await callback.answer(
-            "Siz ushbu kursga allaqachon ro'yxatdan o'tgansiz.",
+            lang_manager.get_text_by_lang(user_lang, "already_registered"),
             show_alert=True,
         )
         return
@@ -481,49 +490,52 @@ async def choose_course_handler(callback: CallbackQuery, state: FSMContext) -> N
     await state.clear()
     await state.update_data(course_id=course_id, course_name=course["name"])
     await state.set_state(RegistrationState.first_name)
-    description = (
-        f"\nTavsif: {course['description']}"
-        if course["description"]
-        else ""
-    )
+    
+    course_text = lang_manager.get_text_by_lang(user_lang, "course_selected", course_name=course["name"])
+    if course["description"]:
+        course_text += lang_manager.get_text_by_lang(user_lang, "course_desc", description=course["description"])
+    
     await callback.message.answer(
-        f"{course['name']} kursi tanlandi.{description}\n\nIsmingizni kiriting:",
-        reply_markup=cancel_keyboard(),
+        f"{course_text}\n\n{lang_manager.get_text_by_lang(user_lang, 'enter_first_name')}",
+        reply_markup=cancel_keyboard(user_lang),
     )
     await callback.answer()
 
 
 @router.message(RegistrationState.first_name)
 async def registration_first_name_handler(message: Message, state: FSMContext) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     if not message.text or not is_valid_name(message.text):
-        await message.answer("Ismni to'g'ri kiriting. Masalan: Ali")
+        await message.answer(lang_manager.get_text_by_lang(user_lang, "invalid_name"))
         return
 
     await state.update_data(first_name=message.text.strip())
     await state.set_state(RegistrationState.last_name)
-    await message.answer("Familyangizni kiriting:", reply_markup=cancel_keyboard())
+    await message.answer(lang_manager.get_text_by_lang(user_lang, "enter_last_name"), reply_markup=cancel_keyboard(user_lang))
 
 
 @router.message(RegistrationState.last_name)
 async def registration_last_name_handler(message: Message, state: FSMContext) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     if not message.text or not is_valid_name(message.text):
-        await message.answer("Familyani to'g'ri kiriting. Masalan: Karimov")
+        await message.answer(lang_manager.get_text_by_lang(user_lang, "invalid_name"))
         return
 
     await state.update_data(last_name=message.text.strip())
     await state.set_state(RegistrationState.phone)
     await message.answer(
-        "Telefon raqamingizni yuboring yoki qo'lda kiriting.\nMasalan: +998901234567",
-        reply_markup=contact_keyboard(),
+        lang_manager.get_text_by_lang(user_lang, "enter_phone"),
+        reply_markup=contact_keyboard(user_lang),
     )
 
 
 @router.message(RegistrationState.phone)
 async def registration_phone_handler(message: Message, state: FSMContext) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     phone: str | None = None
     if message.contact:
         if message.contact.user_id and message.contact.user_id != message.from_user.id:
-            await message.answer("Iltimos, o'zingizning telefon raqamingizni yuboring.")
+            await message.answer(lang_manager.get_text_by_lang(user_lang, "invalid_phone"))
             return
         phone = normalize_phone(message.contact.phone_number)
     elif message.text:
@@ -531,20 +543,21 @@ async def registration_phone_handler(message: Message, state: FSMContext) -> Non
 
     if phone is None:
         await message.answer(
-            "Telefon raqam noto'g'ri. Masalan: +998901234567",
-            reply_markup=contact_keyboard(),
+            lang_manager.get_text_by_lang(user_lang, "invalid_phone"),
+            reply_markup=contact_keyboard(user_lang),
         )
         return
 
     await state.update_data(phone=phone)
     await state.set_state(RegistrationState.address)
-    await message.answer("Manzilingizni kiriting:", reply_markup=cancel_keyboard())
+    await message.answer(lang_manager.get_text_by_lang(user_lang, "enter_address"), reply_markup=cancel_keyboard(user_lang))
 
 
 @router.message(RegistrationState.address)
 async def registration_address_handler(message: Message, state: FSMContext) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     if not message.text or len(message.text.strip()) < 5:
-        await message.answer("Manzilni to'liqroq kiriting.")
+        await message.answer(lang_manager.get_text_by_lang(user_lang, "invalid_address"))
         return
 
     data = await state.get_data()
@@ -563,15 +576,15 @@ async def registration_address_handler(message: Message, state: FSMContext) -> N
     except sqlite3.IntegrityError:
         await state.clear()
         await message.answer(
-            "Siz bu kursga oldin ro'yxatdan o'tgansiz.",
-            reply_markup=main_menu(is_admin_user(message.from_user.id)),
+            lang_manager.get_text_by_lang(user_lang, "already_registered"),
+            reply_markup=main_menu(is_admin_user(message.from_user.id), lang=user_lang),
         )
         return
 
     await state.clear()
     await message.answer(
-        f"Siz {data['course_name']} kursiga muvaffaqiyatli ro'yxatdan o'tdingiz.",
-        reply_markup=main_menu(is_admin_user(message.from_user.id)),
+        lang_manager.get_text_by_lang(user_lang, "reg_success", course_name=data["course_name"]),
+        reply_markup=main_menu(is_admin_user(message.from_user.id), lang=user_lang),
     )
     await send_admin_notifications(
         message.bot,
@@ -580,19 +593,21 @@ async def registration_address_handler(message: Message, state: FSMContext) -> N
     )
 
 
-@router.message(F.text == ADMIN_ADD_COURSE)
+@router.message(F.text.in_(lang_manager.get_all_translations("admin_menu_add")))
 async def add_course_start_handler(message: Message, state: FSMContext) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     if not is_admin_user(message.from_user.id if message.from_user else None):
         await message.answer("Sizda bu amal uchun huquq yo'q.")
         return
 
     await state.clear()
     await state.set_state(AddCourseState.name)
-    await message.answer("Yangi kurs nomini kiriting:", reply_markup=cancel_keyboard())
+    await message.answer("Yangi kurs nomini kiriting:", reply_markup=cancel_keyboard(user_lang))
 
 
 @router.message(AddCourseState.name)
 async def add_course_name_handler(message: Message, state: FSMContext) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     if not message.text or len(message.text.strip()) < 3:
         await message.answer("Kurs nomini kamida 3 ta belgida kiriting.")
         return
@@ -604,12 +619,13 @@ async def add_course_name_handler(message: Message, state: FSMContext) -> None:
     await state.set_state(AddCourseState.description)
     await message.answer(
         "Kurs tavsifini kiriting.\nAgar kerak bo'lmasa `-` yuboring.",
-        reply_markup=cancel_keyboard(),
+        reply_markup=cancel_keyboard(user_lang),
     )
 
 
 @router.message(AddCourseState.description)
 async def add_course_description_handler(message: Message, state: FSMContext) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     if not message.text:
         await message.answer("Tavsif kiriting yoki `-` yuboring.")
         return
@@ -629,28 +645,30 @@ async def add_course_description_handler(message: Message, state: FSMContext) ->
     await state.clear()
     await message.answer(
         f"{data['name']} kursi qo'shildi.",
-        reply_markup=admin_menu(),
+        reply_markup=admin_menu(user_lang),
     )
 
 
-@router.message(F.text == ADMIN_EDIT_TEACHER)
+@router.message(F.text.in_(lang_manager.get_all_translations("admin_menu_teacher")))
 async def edit_teacher_start_handler(message: Message, state: FSMContext) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     if not is_admin_user(message.from_user.id if message.from_user else None):
-        await message.answer("Sizda bu amal uchun huquq yo'q.")
+        await message.answer(lang_manager.get_text_by_lang(user_lang, "admin_no_permission"))
         return
 
     await state.clear()
     profile = database.get_teacher_profile()
     await state.set_state(TeacherProfileState.full_name)
     await message.answer(
-        f"{format_teacher_profile(profile)}\n\nTeacher ism-familyasini kiriting:",
-        reply_markup=cancel_keyboard(),
+        f"{format_teacher_profile(profile, user_lang)}\n\n{lang_manager.get_text_by_lang(user_lang, 'admin_teacher_edit_name')}",
+        reply_markup=cancel_keyboard(user_lang),
         parse_mode=ParseMode.HTML,
     )
 
 
 @router.message(TeacherProfileState.full_name)
 async def teacher_full_name_handler(message: Message, state: FSMContext) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     if not message.text or not is_valid_name(message.text):
         await message.answer("Ism-familyani to'g'ri kiriting. Masalan: Habib Karimov")
         return
@@ -658,34 +676,30 @@ async def teacher_full_name_handler(message: Message, state: FSMContext) -> None
     await state.update_data(full_name=message.text.strip())
     await state.set_state(TeacherProfileState.phone)
     await message.answer(
-        "Teacher telefon raqamini kiriting.\nMasalan: +998901234567",
-        reply_markup=cancel_keyboard(),
+        lang_manager.get_text_by_lang(user_lang, "admin_teacher_edit_phone"),
+        reply_markup=cancel_keyboard(user_lang),
     )
 
 
 @router.message(TeacherProfileState.phone)
 async def teacher_phone_handler(message: Message, state: FSMContext) -> None:
-    if not message.text:
-        await message.answer("Telefon raqam kiriting.")
-        return
-
-    phone = normalize_phone(message.text)
+    user_lang = lang_manager.get_user_language(message.from_user.id)
+    phone = normalize_phone(message.text or "")
     if phone is None:
-        await message.answer("Telefon raqam noto'g'ri. Masalan: +998901234567")
+        await message.answer(lang_manager.get_text_by_lang(user_lang, "invalid_phone"))
         return
 
     await state.update_data(phone=phone)
     await state.set_state(TeacherProfileState.social_links)
     await message.answer(
-        "Ijtimoiy tarmoqlar manzillarini yuboring.\n"
-        "Har birini yangi qatordan yozing.\n"
-        "Agar hozircha bo'lmasa `-` yuboring.",
-        reply_markup=cancel_keyboard(),
+        lang_manager.get_text_by_lang(user_lang, "admin_teacher_edit_social"),
+        reply_markup=cancel_keyboard(user_lang),
     )
 
 
 @router.message(TeacherProfileState.social_links)
 async def teacher_social_links_handler(message: Message, state: FSMContext) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     if not message.text:
         await message.answer("Ijtimoiy tarmoq manzillarini yuboring yoki `-` yozing.")
         return
@@ -694,15 +708,14 @@ async def teacher_social_links_handler(message: Message, state: FSMContext) -> N
     await state.update_data(social_links=social_links)
     await state.set_state(TeacherProfileState.bio)
     await message.answer(
-        "Teacher haqida qisqacha ma'lumot kiriting.\n"
-        "Masalan: tajribasi, dars yo'nalishi, yutuqlari.\n"
-        "Agar hozircha bo'lmasa `-` yuboring.",
-        reply_markup=cancel_keyboard(),
+        lang_manager.get_text_by_lang(user_lang, "admin_teacher_edit_bio"),
+        reply_markup=cancel_keyboard(user_lang),
     )
 
 
 @router.message(TeacherProfileState.bio)
 async def teacher_bio_handler(message: Message, state: FSMContext) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     if not message.text:
         await message.answer("Qisqacha ma'lumot kiriting yoki `-` yozing.")
         return
@@ -720,14 +733,13 @@ async def teacher_bio_handler(message: Message, state: FSMContext) -> None:
         bio=bio_text,
     )
     await state.clear()
-
     profile = database.get_teacher_profile()
     await message.answer(
-        "Teacher ma'lumotlari muvaffaqiyatli yangilandi.",
-        reply_markup=admin_menu(),
+        lang_manager.get_text_by_lang(user_lang, "admin_teacher_updated"),
+        reply_markup=admin_menu(user_lang),
     )
     await message.answer(
-        format_teacher_profile(profile),
+        format_teacher_profile(profile, user_lang),
         parse_mode=ParseMode.HTML,
     )
 
@@ -738,19 +750,20 @@ async def choose_broadcast_course_handler(callback: CallbackQuery, state: FSMCon
         await callback.answer()
         return
 
+    user_lang = lang_manager.get_user_language(callback.from_user.id)
     if not is_admin_user(callback.from_user.id):
-        await callback.answer("Sizda bu amal uchun huquq yo'q.", show_alert=True)
+        await callback.answer(lang_manager.get_text_by_lang(user_lang, "admin_no_permission"), show_alert=True)
         return
 
     course_id = int(callback.data.split(":")[1])
     course = database.get_course(course_id)
     if course is None:
-        await callback.answer("Kurs topilmadi.", show_alert=True)
+        await callback.answer(lang_manager.get_text_by_lang(user_lang, "admin_course_not_found"), show_alert=True)
         return
 
     recipients = database.get_course_recipients(course_id)
     if not recipients:
-        await callback.answer("Bu kurs uchun hali ro'yxatdan o'tganlar yo'q.", show_alert=True)
+        await callback.answer(lang_manager.get_text_by_lang(user_lang, "admin_broadcast_no_users"), show_alert=True)
         return
 
     await state.clear()
@@ -761,19 +774,19 @@ async def choose_broadcast_course_handler(callback: CallbackQuery, state: FSMCon
     )
     await state.set_state(CourseBroadcastState.message)
     await callback.message.answer(
-        f"{course['name']} kursi tanlandi.\n"
-        f"Qabul qiluvchilar soni: {len(recipients)}\n\n"
-        "Endi yuboriladigan xabar matnini kiriting:",
-        reply_markup=cancel_keyboard(),
+        lang_manager.get_text_by_lang(user_lang, "course_selected", course_name=course['name']) + 
+        f"\n\n{lang_manager.get_text_by_lang(user_lang, 'admin_broadcast_prompt')}",
+        reply_markup=cancel_keyboard(user_lang),
     )
     await callback.answer()
 
 
 @router.message(CourseBroadcastState.message)
 async def course_broadcast_message_handler(message: Message, state: FSMContext) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     if not is_admin_user(message.from_user.id if message.from_user else None):
         await state.clear()
-        await message.answer("Sizda bu amal uchun huquq yo'q.")
+        await message.answer(lang_manager.get_text_by_lang(user_lang, "admin_no_permission"))
         return
 
     if not message.text or len(message.text.strip()) < 2:
@@ -788,8 +801,8 @@ async def course_broadcast_message_handler(message: Message, state: FSMContext) 
     if not recipients:
         await state.clear()
         await message.answer(
-            "Bu kurs uchun ro'yxatdan o'tgan userlar topilmadi.",
-            reply_markup=admin_menu(),
+            lang_manager.get_text_by_lang(user_lang, "admin_broadcast_no_users"),
+            reply_markup=admin_menu(user_lang),
         )
         return
 
@@ -801,32 +814,26 @@ async def course_broadcast_message_handler(message: Message, state: FSMContext) 
     )
     await state.clear()
 
-    result_lines = [
-        f"{course_name} kursi uchun xabar yuborildi.",
-        f"Yuborildi: {sent_count}",
-    ]
-    if failed_count:
-        result_lines.append(f"Yuborilmadi: {failed_count}")
-
     await message.answer(
-        "\n".join(result_lines),
-        reply_markup=admin_menu(),
+        lang_manager.get_text_by_lang(user_lang, "admin_broadcast_status", name=course_name, sent=sent_count, failed=failed_count),
+        reply_markup=admin_menu(user_lang),
     )
 
 
-@router.message(F.text == ADMIN_DELETE_COURSE)
+@router.message(F.text.in_(lang_manager.get_all_translations("admin_menu_del")))
 async def delete_course_menu_handler(message: Message) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     if not is_admin_user(message.from_user.id if message.from_user else None):
-        await message.answer("Sizda bu amal uchun huquq yo'q.")
+        await message.answer(lang_manager.get_text_by_lang(user_lang, "admin_no_permission"))
         return
 
     courses = database.list_courses()
     if not courses:
-        await message.answer("O'chirish uchun kurs topilmadi.", reply_markup=admin_menu())
+        await message.answer(lang_manager.get_text_by_lang(user_lang, "admin_no_courses"), reply_markup=admin_menu(user_lang))
         return
 
     await message.answer(
-        "O'chiriladigan kursni tanlang:",
+        lang_manager.get_text_by_lang(user_lang, "admin_course_del_select"),
         reply_markup=courses_inline_keyboard(
             courses,
             "delete_course",
@@ -842,38 +849,40 @@ async def delete_course_handler(callback: CallbackQuery) -> None:
         await callback.answer()
         return
 
+    user_lang = lang_manager.get_user_language(callback.from_user.id)
     if not is_admin_user(callback.from_user.id):
-        await callback.answer("Sizda bu amal uchun huquq yo'q.", show_alert=True)
+        await callback.answer(lang_manager.get_text_by_lang(user_lang, "admin_no_permission"), show_alert=True)
         return
 
     course_id = int(callback.data.split(":")[1])
     course = database.get_course(course_id)
     if course is None:
-        await callback.answer("Kurs topilmadi.", show_alert=True)
+        await callback.answer(lang_manager.get_text_by_lang(user_lang, "admin_course_not_found"), show_alert=True)
         return
 
     deleted = database.delete_course(course_id)
     if not deleted:
-        await callback.answer("Kursni o'chirib bo'lmadi.", show_alert=True)
+        await callback.answer(lang_manager.get_text_by_lang(user_lang, "admin_course_del_fail"), show_alert=True)
         return
 
-    await callback.message.answer(f"{course['name']} kursi o'chirildi.")
+    await callback.message.answer(lang_manager.get_text_by_lang(user_lang, "admin_course_del_success", name=course['name']))
     await callback.answer("Kurs o'chirildi.")
 
 
-@router.message(F.text == ADMIN_VIEW_APPLICATIONS)
+@router.message(F.text.in_(lang_manager.get_all_translations("admin_menu_apps")))
 async def applications_menu_handler(message: Message) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     if not is_admin_user(message.from_user.id if message.from_user else None):
-        await message.answer("Sizda bu amal uchun huquq yo'q.")
+        await message.answer(lang_manager.get_text_by_lang(user_lang, "admin_no_permission"))
         return
 
     courses = database.list_courses()
     if not courses:
-        await message.answer("Hozircha kurslar mavjud emas.", reply_markup=admin_menu())
+        await message.answer(lang_manager.get_text_by_lang(user_lang, "admin_no_courses"), reply_markup=admin_menu(user_lang))
         return
 
     await message.answer(
-        "Qaysi kurs arizalarini ko'rmoqchisiz?",
+        lang_manager.get_text_by_lang(user_lang, "admin_apps_select"),
         reply_markup=courses_inline_keyboard(
             courses,
             "course_apps",
@@ -889,18 +898,19 @@ async def show_applications_handler(callback: CallbackQuery) -> None:
         await callback.answer()
         return
 
+    user_lang = lang_manager.get_user_language(callback.from_user.id)
     if not is_admin_user(callback.from_user.id):
-        await callback.answer("Sizda bu amal uchun huquq yo'q.", show_alert=True)
+        await callback.answer(lang_manager.get_text_by_lang(user_lang, "admin_no_permission"), show_alert=True)
         return
 
     course_id = int(callback.data.split(":")[1])
     course = database.get_course(course_id)
     if course is None:
-        await callback.answer("Kurs topilmadi.", show_alert=True)
+        await callback.answer(lang_manager.get_text_by_lang(user_lang, "admin_course_not_found"), show_alert=True)
         return
 
     registrations = database.get_registrations_by_course(course_id)
-    text = format_registrations(course["name"], registrations)
+    text = format_registrations(course["name"], registrations, user_lang)
     for chunk in split_text(text):
         await callback.message.answer(chunk)
     await callback.answer()
@@ -908,9 +918,10 @@ async def show_applications_handler(callback: CallbackQuery) -> None:
 
 @router.message()
 async def fallback_handler(message: Message) -> None:
+    user_lang = lang_manager.get_user_language(message.from_user.id)
     await message.answer(
-        "Iltimos, menyudagi tugmalardan foydalaning: kurslar, teacher haqida yoki /start.",
-        reply_markup=main_menu(is_admin_user(message.from_user.id if message.from_user else None)),
+        lang_manager.get_text_by_lang(user_lang, "fallback"),
+        reply_markup=main_menu(is_admin_user(message.from_user.id), lang=user_lang),
     )
 
 
